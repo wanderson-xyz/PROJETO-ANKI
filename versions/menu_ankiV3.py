@@ -2,6 +2,7 @@ import requests
 import csv
 import re
 import unicodedata
+import os
 
 URL = "http://localhost:8765"
 
@@ -29,7 +30,6 @@ def anki_connect(action, params=None):
 # ==================================================
 
 def obter_decks():
-
     return anki_connect("deckNames")
 
 # ==================================================
@@ -56,26 +56,66 @@ def criar_arvore(decks):
     return arvore
 
 # ==================================================
+# LISTAR CSVs AUTOMATICAMENTE
+# ==================================================
+
+def listar_csvs():
+
+    pasta_atual = os.path.dirname(os.path.abspath(__file__))
+
+    arquivos = os.listdir(pasta_atual)
+
+    csvs = [f for f in arquivos if f.endswith(".csv")]
+
+    return csvs, pasta_atual
+
+# ==================================================
+# ESCOLHER CSV
+# ==================================================
+
+def escolher_csv():
+
+    csvs, pasta = listar_csvs()
+
+    if not csvs:
+
+        print("\nNenhum CSV encontrado na pasta do script.")
+        return None
+
+    print("\n===================================")
+    print("CSV DISPONÍVEIS")
+    print("===================================\n")
+
+    for i, arquivo in enumerate(csvs, start=1):
+        print(f"{i} - {arquivo}")
+
+    escolha = input("\nEscolha o CSV: ")
+
+    try:
+
+        arquivo = csvs[int(escolha) - 1]
+
+        return os.path.join(pasta, arquivo)
+
+    except:
+
+        print("\nOpção inválida.")
+        return None
+
+# ==================================================
 # MENU DE NAVEGAÇÃO
 # ==================================================
 
 def navegar_arvore(arvore):
 
     caminho = []
-
     atual = arvore
 
     while True:
 
         opcoes = list(atual.keys())
 
-        # =====================================
-        # SE NÃO HÁ MAIS FILHOS:
-        # CHEGAMOS NO DECK FINAL
-        # =====================================
-
         if len(opcoes) == 0:
-
             break
 
         print("\n===================================")
@@ -94,23 +134,13 @@ def navegar_arvore(arvore):
 
         escolha = input("\nEscolha uma opção: ")
 
-        # =====================================
-        # ESCOLHER DECK ATUAL
-        # =====================================
-
         if escolha == "0":
 
             if len(caminho) == 0:
-
                 print("\nVocê não pode selecionar a raiz.")
-
                 continue
 
             return "::".join(caminho)
-
-        # =====================================
-        # NAVEGAR
-        # =====================================
 
         try:
 
@@ -127,33 +157,28 @@ def navegar_arvore(arvore):
             print("\nOpção inválida.")
 
 # ==================================================
-# LIMPAR TEXO
+# LIMPAR TEXTO
 # ==================================================
 
 def limpar_texto(texto):
 
     texto = texto.strip()
 
-    # Remove espaços duplicados
     texto = re.sub(r"\s+", " ", texto)
 
-    # Corrige latex tipo $5^o$
     texto = re.sub(r"\$([0-9]+)\^o\$", r"\1º", texto)
 
-    # Remove $ soltos
     texto = texto.replace("$", "")
 
-    # Corrige traços
     texto = texto.replace("–", "-")
     texto = texto.replace("—", "-")
 
-    # Remove espaços antes de pontuação
     texto = re.sub(r"\s+([.,;:!?])", r"\1", texto)
 
     return texto
 
 # ==================================================
-# GERAR TAGS AUTOMÁTICAS
+# GERAR TAGS
 # ==================================================
 
 def gerar_tags(deck):
@@ -178,7 +203,7 @@ def gerar_tags(deck):
     return tags
 
 # ==================================================
-# VERIFICAR DUPLICIDADE
+# DUPLICIDADE
 # ==================================================
 
 def card_existe(deck, pergunta):
@@ -187,9 +212,7 @@ def card_existe(deck, pergunta):
 
     resultado = anki_connect(
         "findNotes",
-        {
-            "query": query
-        }
+        {"query": query}
     )
 
     return len(resultado) > 0
@@ -215,12 +238,10 @@ def adicionar_flashcard(deck, pergunta, resposta, tags):
     return anki_connect("addNote", payload)
 
 # ==================================================
-# IMPORTAR CSV
+# IMPORTAR CSV (DINÂMICO)
 # ==================================================
 
-def importar_csv(deck):
-
-    arquivo_csv = "flashcards.csv"
+def importar_csv(deck, arquivo_csv):
 
     adicionados = 0
     duplicados = 0
@@ -247,33 +268,24 @@ def importar_csv(deck):
                     if card_existe(deck, pergunta):
 
                         duplicados += 1
-
                         print(f"[DUPLICADO] {pergunta[:60]}")
-
                         continue
 
-                    adicionar_flashcard(
-                        deck,
-                        pergunta,
-                        resposta,
-                        tags
-                    )
+                    adicionar_flashcard(deck, pergunta, resposta, tags)
 
                     adicionados += 1
-
-                    print(f"[ADICIONADO] Card {adicionados}")
+                    print(f"[ADICIONADO] {adicionados}")
 
                 except Exception as erro:
 
                     erros += 1
-
                     print(f"[ERRO] {erro}")
 
     print("\n===================================")
     print("IMPORTAÇÃO FINALIZADA")
     print("===================================")
 
-    print(f"Total no CSV: {total}")
+    print(f"Total: {total}")
     print(f"Adicionados: {adicionados}")
     print(f"Duplicados: {duplicados}")
     print(f"Erros: {erros}")
@@ -290,95 +302,47 @@ def mostrar_estatisticas(decks):
 
     disciplinas = {}
 
-    # =====================================
-    # ORGANIZAR DISCIPLINAS
-    # =====================================
-
     for deck in decks:
 
         partes = deck.split("::")
 
-        # Ignorar coisas fora do TJCE
         if partes[0] != "TJCE":
             continue
-
-        # =====================================
-        # DISCIPLINA
-        # =====================================
 
         if len(partes) >= 2:
 
             disciplina = partes[1]
 
             if disciplina not in disciplinas:
-
-                disciplinas[disciplina] = {
-                    "assuntos": set()
-                }
-
-            # =====================================
-            # ASSUNTOS (APENAS NÍVEL 3)
-            # =====================================
+                disciplinas[disciplina] = {"assuntos": set()}
 
             if len(partes) == 3:
-
-                assunto = partes[2]
-
-                disciplinas[disciplina]["assuntos"].add(assunto)
-
-    # =====================================
-    # MOSTRAR ESTATÍSTICAS
-    # =====================================
+                disciplinas[disciplina]["assuntos"].add(partes[2])
 
     for disciplina in disciplinas:
 
         deck_pai = f"TJCE::{disciplina}"
 
-        # =====================================
-        # TOTAL DE CARDS
-        # =====================================
-
         cards = anki_connect(
             "findCards",
-            {
-                "query": f'deck:"{deck_pai}"'
-            }
+            {"query": f'deck:"{deck_pai}"'}
         )
 
         total_cards = len(cards)
 
-        # =====================================
-        # TOTAL DE ASSUNTOS
-        # =====================================
+        total_assuntos = len(disciplinas[disciplina]["assuntos"])
 
-        total_assuntos = len(
-            disciplinas[disciplina]["assuntos"]
+        stats = anki_connect(
+            "getDeckStats",
+            {"decks": [deck_pai]}
         )
-
-        # =====================================
-        # REVISÕES PENDENTES
-        # =====================================
 
         revisoes = 0
 
         try:
-
-            stats = anki_connect(
-                "getDeckStats",
-                {
-                    "decks": [deck_pai]
-                }
-            )
-
             revisoes = stats[deck_pai]["review_count"]
-
         except:
-
             revisoes = 0
-
-        # =====================================
-        # EXIBIÇÃO
-        # =====================================
 
         print(f"\n{disciplina}")
         print(f"- {total_cards} cards")
@@ -386,13 +350,13 @@ def mostrar_estatisticas(decks):
         print(f"- {revisoes} revisões pendentes")
 
 # ==================================================
-# MENU PRINCIPAL
+# MENU
 # ==================================================
 
 def menu_principal():
 
     print("\n===================================")
-    print("ANKI TJCE V3")
+    print("ANKI TJCE V3.1")
     print("===================================")
     print("1 - Importar flashcards")
     print("2 - Ver estatísticas")
@@ -407,58 +371,37 @@ def menu_principal():
 try:
 
     decks = obter_decks()
-
     arvore = criar_arvore(decks)
 
     while True:
 
         escolha = menu_principal()
 
-        # =====================================
-        # IMPORTAR
-        # =====================================
-
         if escolha == "1":
 
             deck_escolhido = navegar_arvore(arvore)
 
-            print("\n===================================")
-            print("DECK ESCOLHIDO")
-            print("===================================")
-            print(deck_escolhido)
+            if not deck_escolhido:
+                continue
 
-            importar_csv(deck_escolhido)
+            print("\nDECK:", deck_escolhido)
 
-        # =====================================
-        # ESTATÍSTICAS
-        # =====================================
+            arquivo_csv = escolher_csv()
+
+            if arquivo_csv:
+                importar_csv(deck_escolhido, arquivo_csv)
 
         elif escolha == "2":
-
             mostrar_estatisticas(decks)
 
-        # =====================================
-        # SAIR
-        # =====================================
-
         elif escolha == "3":
-
-            print("\nEncerrando aplicação...")
+            print("\nEncerrando...")
             break
 
         else:
-
             print("\nOpção inválida.")
 
 except Exception as erro:
 
-    print("\n===================================")
-    print("ERRO")
-    print("===================================")
-
+    print("\nERRO:")
     print(erro)
-
-    print("\nVerifique:")
-    print("- Se o Anki está aberto")
-    print("- Se o AnkiConnect está instalado")
-    print("- Se o arquivo flashcards.csv existe")
